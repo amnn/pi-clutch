@@ -9,6 +9,7 @@
     "coding-agent"
   ],
   "files": [
+    "index.ts",
     "src",
     "README.md"
   ],
@@ -19,7 +20,7 @@
   },
   "pi": {
     "extensions": [
-      "./src/index.ts"
+      "./index.ts"
     ]
   },
   "peerDependencies": {

@@ -72,7 +72,7 @@ pi install git:github.com/amnn/clutch
 Or try the extension directly without installing it:
 
 ```sh
-pi -e ./src/index.ts
+pi -e ./index.ts
 ```
 
 After changing an installed extension, run `/reload` in Pi.
