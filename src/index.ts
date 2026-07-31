@@ -1,6 +1,7 @@
-import type {
-  ExtensionAPI,
-  ExtensionContext,
+import {
+  CustomEditor,
+  type ExtensionAPI,
+  type ExtensionContext,
 } from "@earendil-works/pi-coding-agent";
 
 export const DEFINITION_CONTENT = `EDIT CLUTCH
@@ -21,8 +22,9 @@ Required behavior while disengaged:
 While engaged, operate normally and make changes when appropriate to the user's request.`;
 
 export const DISENGAGED_REMINDER = `<clutch disengaged>Do not modify project files. Explore, read, search, and analyze.</clutch>`;
-export const STATUS_DISENGAGED = "━┫  ┣━";
-export const STATUS_ENGAGED = "━━┫┣━━";
+export const BORDER_INDICATOR = "─┤  ├─";
+
+const HORIZONTAL_BORDER = "─";
 
 const KEY = "edit-clutch";
 const MSG_DEFINITION = "edit-clutch-definition";
@@ -48,6 +50,31 @@ export const REMINDER = {
 interface PersistedState {
   version: typeof STATE_VERSION;
   engaged: boolean;
+}
+
+/**
+ * Stamps the clutch into the last matching stretch of horizontal border.
+ *
+ * @param line Rendered editor-border line.
+ * @param borderColor Optional colorizer used by the editor to render its border.
+ * @returns The decorated line, or the original line when no exact border
+ * sequence is long enough.
+ *
+ * @remarks Invariants:
+ * - Only an exact sequence using the editor's current border style is replaced.
+ * - The replacement has the same visible width as the matched sequence.
+ */
+export function decorateBorder(
+  line: string,
+  borderColor?: (text: string) => string,
+): string {
+  const horizontal = borderColor?.(HORIZONTAL_BORDER) ?? HORIZONTAL_BORDER;
+  const target = horizontal.repeat(BORDER_INDICATOR.length);
+  const index = line.lastIndexOf(target);
+  if (index === -1) return line;
+
+  const indicator = borderColor?.(BORDER_INDICATOR) ?? BORDER_INDICATOR;
+  return line.slice(0, index) + indicator + line.slice(index + target.length);
 }
 
 /**
@@ -125,6 +152,16 @@ export default function (pi: ExtensionAPI): void {
   let defined = false;
 
   /**
+   * Requests an editor redraw after a clutch-state change.
+   *
+   * Takes no parameters; it is set when the editor is decorated and cleared on
+   * session shutdown.
+   *
+   * @returns Nothing.
+   */
+  let refreshEditor: (() => void) | undefined;
+
+  /**
    * Persists the state-neutral protocol definition at most once per branch.
    *
    * Takes no parameters; it closes over `pi` and `defined`.
@@ -136,6 +173,51 @@ export default function (pi: ExtensionAPI): void {
     if (defined) return;
     pi.sendMessage(DEFINITION, { triggerTurn: false });
     defined = true;
+  };
+
+  /**
+   * Installs a render-only decorator around the current editor factory.
+   *
+   * @param ctx Extension context that owns the editor-factory slot.
+   * @returns Nothing.
+   *
+   * @remarks Invariants:
+   * - Non-TUI contexts are left untouched.
+   * - A previously installed editor factory remains responsible for editor
+   * behavior; otherwise a standard `CustomEditor` is used.
+   * - The factory observes the live clutch state on every render.
+   * - Decorated render results are copied so an inner editor's cached lines are
+   * never mutated.
+   */
+  const installEditorDecorator = (ctx: ExtensionContext) => {
+    if (ctx.mode !== "tui") return;
+
+    const editor = ctx.ui.getEditorComponent();
+    ctx.ui.setEditorComponent((tui, theme, keybindings) => {
+      refreshEditor = () => tui.requestRender();
+
+      const inner = editor
+        ? editor(tui, theme, keybindings)
+        : new CustomEditor(tui, theme, keybindings);
+      const render = inner.render.bind(inner);
+
+      inner.render = (width: number): string[] => {
+        const lines = render(width);
+        if (engaged) return lines;
+
+        const top = lines[0];
+        if (top === undefined) return lines;
+
+        const decorated = decorateBorder(top, inner.borderColor);
+        if (decorated === top) return lines;
+
+        const copy = lines.slice();
+        copy[0] = decorated;
+        return copy;
+      };
+
+      return inner;
+    });
   };
 
   /**
@@ -153,7 +235,7 @@ export default function (pi: ExtensionAPI): void {
   };
 
   /**
-   * Restores runtime state from the active branch and refreshes the footer.
+   * Restores runtime state from the active branch and refreshes the editor.
    *
    * @param ctx Extension context for the newly active session or branch.
    *
@@ -167,7 +249,7 @@ export default function (pi: ExtensionAPI): void {
     engaged = restoreEngagedState(ctx);
     defined = hasDefinitionOnBranch(ctx);
     pending = false;
-    updateStatus(ctx);
+    refreshEditor?.();
   };
 
   /**
@@ -177,7 +259,7 @@ export default function (pi: ExtensionAPI): void {
    *
    * @remarks Invariants:
    * - While streaming, this only flips `pending`; state and UI do not change.
-   * - While idle, definition, state, status, and notification update together.
+   * - While idle, definition, state, border, and notification update together.
    * - Disengagement persists the definition before the state entry.
    */
   const toggle = (ctx: ExtensionContext) => {
@@ -192,14 +274,8 @@ export default function (pi: ExtensionAPI): void {
     if (!engaged) ensureDefinition();
 
     persistState();
-    updateStatus(ctx);
+    refreshEditor?.();
     ctx.ui.notify(`Clutch ${engaged ? "engaged" : "disengaged"}`, "info");
-  };
-
-  const updateStatus = (ctx: ExtensionContext) => {
-    const state = engaged ? STATUS_ENGAGED : STATUS_DISENGAGED;
-    const color = engaged ? "dim" : "customMessageLabel";
-    ctx.ui.setStatus(KEY, ctx.ui.theme.fg(color, state));
   };
 
   pi.registerShortcut("alt+e", {
@@ -209,6 +285,11 @@ export default function (pi: ExtensionAPI): void {
 
   pi.on("session_start", (_event, ctx) => {
     restoreSessionState(ctx);
+    installEditorDecorator(ctx);
+  });
+
+  pi.on("session_shutdown", () => {
+    refreshEditor = undefined;
   });
 
   pi.on("session_tree", (_event, ctx) => {

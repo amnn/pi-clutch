@@ -1,16 +1,17 @@
 import assert from "node:assert/strict";
 import { describe, it } from "node:test";
+import { stripVTControlCharacters } from "node:util";
 import type { AgentMessage } from "@earendil-works/pi-agent-core";
 import type {
   ExtensionAPI,
   ExtensionContext,
 } from "@earendil-works/pi-coding-agent";
 import editClutchExtension, {
+  BORDER_INDICATOR,
   DEFINITION,
   DEFINITION_CONTENT,
   DISENGAGED_REMINDER,
-  STATUS_DISENGAGED,
-  STATUS_ENGAGED,
+  decorateBorder,
 } from "../index.ts";
 
 const CLUTCH_SHORTCUT = "alt+e";
@@ -44,13 +45,58 @@ interface SentMessage {
   };
 }
 
+interface TestTui {
+  requestRender(): void;
+}
+
+type TestEditorFactory = (
+  tui: TestTui,
+  theme: unknown,
+  keybindings: unknown,
+) => TestEditorComponent;
+
+class TestEditorComponent {
+  text = "";
+  readonly inputs: string[] = [];
+  invalidations = 0;
+  onSubmit?: (text: string) => void;
+  onChange?: (text: string) => void;
+
+  constructor(
+    readonly renderLines: (width: number) => string[] = (width) => [
+      "─".repeat(width),
+      " ".repeat(width),
+      "─".repeat(width),
+    ],
+  ) {}
+
+  render(width: number): string[] {
+    return this.renderLines(width);
+  }
+
+  invalidate(): void {
+    this.invalidations += 1;
+  }
+
+  getText(): string {
+    return this.text;
+  }
+
+  setText(text: string): void {
+    this.text = text;
+  }
+
+  handleInput(data: string): void {
+    this.inputs.push(data);
+  }
+}
+
 class ExtensionHarness {
   readonly handlers = new Map<string, EventHandler[]>();
   readonly shortcuts = new Map<
     string,
     { description?: string; handler: Shortcut }
   >();
-  readonly statuses = new Map<string, string | undefined>();
   readonly notifications: Array<{
     message: string;
     type: "info" | "warning" | "error" | undefined;
@@ -61,14 +107,27 @@ class ExtensionHarness {
   branchEntries: TestEntry[];
   contextEntries: TestEntry[];
   idle = true;
+  renderRequests = 0;
+  editorFactory: TestEditorFactory | undefined;
+  editor: TestEditorComponent | undefined;
 
+  readonly baseEditor: TestEditorComponent;
+  readonly tui: TestTui;
   readonly ctx: ExtensionContext;
   readonly api: ExtensionAPI;
 
   constructor(
     entries: TestEntry[] = [],
     contextEntries: TestEntry[] = entries,
+    baseEditor = new TestEditorComponent(),
   ) {
+    this.baseEditor = baseEditor;
+    this.tui = {
+      requestRender: () => {
+        this.renderRequests += 1;
+      },
+    };
+    this.editorFactory = () => this.baseEditor;
     this.branchEntries = entries.map((entry, index) => ({
       ...entry,
       id: `entry-${index}`,
@@ -77,14 +136,15 @@ class ExtensionHarness {
     this.contextEntries = [...contextEntries];
 
     this.ctx = {
+      mode: "tui",
       ui: {
-        setStatus: (key: string, text: string | undefined) =>
-          this.statuses.set(key, text),
+        getEditorComponent: () => this.editorFactory,
+        setEditorComponent: (factory: TestEditorFactory | undefined) => {
+          this.editorFactory = factory;
+          this.editor = factory?.(this.tui, {}, {});
+        },
         notify: (message: string, type?: "info" | "warning" | "error") => {
           this.notifications.push({ message, type });
-        },
-        theme: {
-          fg: (color: string, text: string) => `${color}(${text})`,
         },
       },
 
@@ -161,6 +221,11 @@ class ExtensionHarness {
     assert.ok(shortcut, `${CLUTCH_SHORTCUT} shortcut was not registered`);
     await shortcut.handler(this.ctx);
   }
+
+  renderEditor(width = 12): string[] {
+    assert.ok(this.editor, "editor decorator was not installed");
+    return this.editor.render(width);
+  }
 }
 
 function definitionEntry(): TestEntry {
@@ -183,10 +248,21 @@ function stateEntry(engaged: boolean): TestEntry {
 function createHarness(
   entries: TestEntry[] = [],
   contextEntries: TestEntry[] = entries,
+  editor?: TestEditorComponent,
 ): ExtensionHarness {
-  const harness = new ExtensionHarness(entries, contextEntries);
+  const harness = new ExtensionHarness(entries, contextEntries, editor);
   editClutchExtension(harness.api);
   return harness;
+}
+
+function expectedDisengagedBorder(width: number): string {
+  return "─".repeat(width - BORDER_INDICATOR.length) + BORDER_INDICATOR;
+}
+
+function topBorder(harness: ExtensionHarness, width = 12): string {
+  const border = harness.renderEditor(width)[0];
+  assert.ok(border, "editor did not render a top border");
+  return border;
 }
 
 function toolCall(toolName: string): Record<string, unknown> {
@@ -199,7 +275,7 @@ function toolCall(toolName: string): Record<string, unknown> {
 }
 
 describe("edit clutch extension", () => {
-  it("registers Alt+E and renders fixed-width mechanical status art", async () => {
+  it("registers Alt+E and decorates only the disengaged editor border", async () => {
     const harness = createHarness();
     await harness.start();
 
@@ -207,29 +283,92 @@ describe("edit clutch extension", () => {
       harness.shortcuts.get(CLUTCH_SHORTCUT)?.description,
       "Toggle the edit clutch",
     );
-    assert.equal(harness.statuses.get("edit-clutch"), `dim(${STATUS_ENGAGED})`);
-    assert.equal(
-      [...STATUS_ENGAGED].length,
-      [...STATUS_DISENGAGED].length,
-      "both clutch states must occupy the same width",
-    );
+    assert.equal(topBorder(harness), "─".repeat(12));
 
     await harness.toggle();
-    assert.equal(
-      harness.statuses.get("edit-clutch"),
-      `customMessageLabel(${STATUS_DISENGAGED})`,
-    );
+    const disengagedBorder = topBorder(harness);
+    assert.equal(disengagedBorder, expectedDisengagedBorder(12));
+    assert.equal([...disengagedBorder].length, 12);
+    assert.equal(harness.renderRequests, 1);
     assert.deepEqual(harness.notifications.at(-1), {
       message: "Clutch disengaged",
       type: "info",
     });
 
     await harness.toggle();
-    assert.equal(harness.statuses.get("edit-clutch"), `dim(${STATUS_ENGAGED})`);
+    assert.equal(topBorder(harness), "─".repeat(12));
+    assert.equal(harness.renderRequests, 2);
     assert.deepEqual(harness.notifications.at(-1), {
       message: "Clutch engaged",
       type: "info",
     });
+  });
+
+  it("uses the last exact matching border sequence", () => {
+    assert.equal(
+      decorateBorder("─── ↑ 2 more ────────"),
+      `─── ↑ 2 more ──${BORDER_INDICATOR}`,
+    );
+    assert.equal(
+      decorateBorder("──────── label ──────── end ─────"),
+      `──────── label ──${BORDER_INDICATOR} end ─────`,
+      "an insufficient trailing run must not hide an earlier usable run",
+    );
+    assert.equal(
+      decorateBorder("─── ↑ 2 more ─────"),
+      "─── ↑ 2 more ─────",
+      "the scroll indicator must remain untouched when no run fits",
+    );
+  });
+
+  it("matches only the requested border styling", () => {
+    const magenta = (text: string) => `\x1b[35m${text}\x1b[39m`;
+    const cyan = (text: string) => `\x1b[36m${text}\x1b[39m`;
+    const line = magenta("─").repeat(8);
+    const decorated = decorateBorder(line, magenta);
+
+    assert.equal(
+      stripVTControlCharacters(decorated),
+      `──${BORDER_INDICATOR}`,
+    );
+    assert.equal(
+      decorated,
+      magenta("─").repeat(2) + magenta(BORDER_INDICATOR),
+    );
+
+    const differentlyStyled = cyan("─").repeat(8);
+    assert.equal(decorateBorder(differentlyStyled, magenta), differentlyStyled);
+  });
+
+  it("preserves editor identity, behavior, and non-border rows", async () => {
+    const originalLines = [
+      "─".repeat(12),
+      "prompt      ",
+      "─".repeat(12),
+      "autocomplete",
+    ];
+    const baseEditor = new TestEditorComponent(() => originalLines);
+    const harness = createHarness([], [], baseEditor);
+    await harness.start();
+
+    assert.equal(harness.editor, baseEditor);
+    assert.equal(harness.renderEditor(), originalLines);
+    harness.editor?.setText("hello");
+    harness.editor?.handleInput("x");
+    harness.editor?.invalidate();
+    const onSubmit = () => {};
+    if (harness.editor) harness.editor.onSubmit = onSubmit;
+
+    assert.equal(baseEditor.getText(), "hello");
+    assert.deepEqual(baseEditor.inputs, ["x"]);
+    assert.equal(baseEditor.invalidations, 1);
+    assert.equal(baseEditor.onSubmit, onSubmit);
+
+    await harness.toggle();
+    const decoratedLines = harness.renderEditor();
+    assert.notEqual(decoratedLines, originalLines);
+    assert.equal(decoratedLines[0], expectedDisengagedBorder(12));
+    assert.deepEqual(decoratedLines.slice(1), originalLines.slice(1));
   });
 
   it("persists state and adds the hidden protocol definition only once", async () => {
@@ -346,7 +485,7 @@ describe("edit clutch extension", () => {
     );
     assert.equal(harness.appendedStates.length, 0);
     assert.deepEqual(harness.persistenceOrder, []);
-    assert.equal(harness.statuses.get("edit-clutch"), `dim(${STATUS_ENGAGED})`);
+    assert.equal(topBorder(harness), "─".repeat(12));
     assert.equal(
       harness.notifications.length,
       0,
@@ -371,10 +510,7 @@ describe("edit clutch extension", () => {
       engaged: false,
     });
     assert.deepEqual(harness.persistenceOrder, ["definition", "state"]);
-    assert.equal(
-      harness.statuses.get("edit-clutch"),
-      `customMessageLabel(${STATUS_DISENGAGED})`,
-    );
+    assert.equal(topBorder(harness), expectedDisengagedBorder(12));
     assert.deepEqual(harness.notifications.at(-1), {
       message: "Clutch disengaged",
       type: "info",
@@ -401,7 +537,7 @@ describe("edit clutch extension", () => {
     assert.equal(harness.sentMessages.length, 0);
     assert.equal(harness.appendedStates.length, 0);
     assert.deepEqual(harness.persistenceOrder, []);
-    assert.equal(harness.statuses.get("edit-clutch"), `dim(${STATUS_ENGAGED})`);
+    assert.equal(topBorder(harness), "─".repeat(12));
     assert.equal(harness.notifications.length, 0);
   });
 
@@ -433,10 +569,7 @@ describe("edit clutch extension", () => {
     const harness = createHarness([stateEntry(false)]);
     await harness.start("reload");
 
-    assert.equal(
-      harness.statuses.get("edit-clutch"),
-      `customMessageLabel(${STATUS_DISENGAGED})`,
-    );
+    assert.equal(topBorder(harness), expectedDisengagedBorder(12));
     assert.equal(harness.sentMessages.length, 0);
 
     const contextResult = (await harness.emit("context", {
@@ -451,7 +584,7 @@ describe("edit clutch extension", () => {
     const harness = createHarness(entries);
     await harness.start("reload");
 
-    assert.equal(harness.statuses.get("edit-clutch"), `dim(${STATUS_ENGAGED})`);
+    assert.equal(topBorder(harness), "─".repeat(12));
     assert.equal(harness.sentMessages.length, 0);
   });
 
@@ -461,9 +594,6 @@ describe("edit clutch extension", () => {
     await harness.start("reload");
 
     assert.equal(harness.sentMessages.length, 0);
-    assert.equal(
-      harness.statuses.get("edit-clutch"),
-      `customMessageLabel(${STATUS_DISENGAGED})`,
-    );
+    assert.equal(topBorder(harness), expectedDisengagedBorder(12));
   });
 });

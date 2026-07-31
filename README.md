@@ -3,14 +3,16 @@
 A [Pi](https://github.com/earendil-works/pi) extension that switches between
 normal editing and an exploratory, no-edit mode.
 
-The clutch starts **engaged**. Press **M-e** to toggle it:
+The clutch starts **engaged**. Press **M-e** to toggle it. The editor's top
+border is unchanged while engaged and separates while disengaged:
 
 ```text
-Engaged       ━┫┣━
-Disengaged     ┫  ┣
+Engaged       ────────────
+Disengaged    ───────┤  ├─
 ```
 
-Each toggle also shows a transient notification naming the new state.
+The indicator inherits the existing border styling and does not add a footer
+row. Each toggle also shows a transient notification naming the new state.
 
 ## Behavior
 
@@ -27,7 +29,12 @@ The extension:
   instead of implementing;
 - appends a short hidden reminder at the end of every outgoing model context;
 - blocks `edit` and `write` calls before execution; and
-- renders the separated plates in purple.
+- renders separated plates near the right edge of the editor's top border.
+
+The renderer replaces the last exact sequence of six cells using the editor's
+current horizontal-border style with `─┤  ├─`. Differently styled sections,
+scroll labels, and other border content remain untouched. If there is no exact
+match, it leaves the border unchanged.
 
 ## Context protocol
 
@@ -56,7 +63,7 @@ JSONL, so it will be restored on reload or resume.
 
 Clutch state is stored in branch-local custom session entries that are not sent
 to the model. It survives reloads, resumes, forks, and session-tree navigation.
-Pressing M-e during an active response queues the whole toggle: state, status,
+Pressing M-e during an active response queues the whole toggle: state, border,
 context behavior, persistence, and notification all change together when the
 agent settles. Additional presses before settlement cancel in pairs. A session
 with no saved state starts engaged.
@@ -90,6 +97,10 @@ This is not a sandbox, it provides behavioural guidelines, and a block for
 filtered; custom tools, MCP servers, and other extensions may still mutate
 files.
 
+Clutch decorates the editor factory that is active when it loads, forwarding all
+other behavior to that editor. An extension that replaces the editor after
+Clutch loads will replace the decoration too.
+
 ## Development
 
 Requires Node.js 20 or newer.
@@ -101,6 +112,6 @@ npm run typecheck
 npm run check
 ```
 
-The tests cover shortcut registration, fixed-width status rendering, state
-persistence, hidden context injection, reload restoration, and `edit`/`write`
-blocking.
+The tests cover shortcut registration, fixed-width exact-style border
+rendering, editor delegation, state persistence, hidden context injection,
+reload restoration, and `edit`/`write` blocking.
