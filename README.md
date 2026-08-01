@@ -1,7 +1,9 @@
-# Pi Edit Clutch
+# Pi Edit Clutch: Plan mode for Pi
 
-A [Pi](https://github.com/earendil-works/pi) extension that switches between
-normal editing and an exploratory, no-edit mode.
+A **Plan mode for [Pi](https://github.com/earendil-works/pi)**. Disengage the
+clutch to have Pi explore the codebase, ask questions, compare approaches, and
+produce a plan without using `edit` or `write`; engage it to return to normal,
+edit-enabled operation.
 
 The clutch starts **engaged**. Press **M-e** to toggle it. The editor's top
 border is unchanged while engaged and separates while disengaged:
@@ -16,12 +18,12 @@ row. Each toggle also shows a transient notification naming the new state.
 
 ## Behavior
 
-### Engaged
+### Engaged (normal mode)
 
 Pi behaves normally. The model may use `edit` and `write` when appropriate to
 the request.
 
-### Disengaged
+### Disengaged (Plan mode)
 
 The extension:
 
