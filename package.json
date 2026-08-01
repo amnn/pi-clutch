@@ -2,6 +2,14 @@
   "name": "pi-edit-clutch",
   "version": "0.1.0",
   "description": "A Pi extension that toggles between exploratory and edit-enabled modes.",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/amnn/pi-clutch.git"
+  },
+  "homepage": "https://github.com/amnn/pi-clutch#readme",
+  "bugs": {
+    "url": "https://github.com/amnn/pi-clutch/issues"
+  },
   "type": "module",
   "keywords": [
     "pi-package",

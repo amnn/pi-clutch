@@ -73,7 +73,7 @@ with no saved state starts engaged.
 Install from this repo:
 
 ```sh
-pi install git:github.com/amnn/clutch
+pi install git:github.com/amnn/pi-clutch
 ```
 
 Or try the extension directly without installing it:
