@@ -1,4 +1,4 @@
-# Pi Edit Clutch: Plan mode for Pi
+# Pi Clutch: Plan mode for Pi
 
 A **Plan mode for [Pi](https://github.com/earendil-works/pi)**. Disengage the
 clutch to have Pi explore the codebase, ask questions, compare approaches, and
