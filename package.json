@@ -1,6 +1,6 @@
 {
   "name": "pi-clutch",
-  "version": "0.1.0",
+  "version": "0.1.1",
   "description": "A Pi extension that toggles between exploratory and edit-enabled modes.",
   "repository": {
     "type": "git",
