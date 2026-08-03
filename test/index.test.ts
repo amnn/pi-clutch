@@ -7,10 +7,12 @@ import type {
   ExtensionContext,
 } from "@earendil-works/pi-coding-agent";
 import editClutchExtension, {
-  BORDER_INDICATOR,
+  BORDER_INDICATOR_DISENGAGED,
   DEFINITION,
   DEFINITION_CONTENT,
   DISENGAGED_REMINDER,
+  BORDER_INDICATOR_PENDING_DISENGAGE,
+  BORDER_INDICATOR_PENDING_ENGAGE,
   decorateBorder,
 } from "../index.ts";
 
@@ -255,8 +257,12 @@ function createHarness(
   return harness;
 }
 
+function expectedBorder(width: number, indicator: string): string {
+  return "─".repeat(width - indicator.length) + indicator;
+}
+
 function expectedDisengagedBorder(width: number): string {
-  return "─".repeat(width - BORDER_INDICATOR.length) + BORDER_INDICATOR;
+  return expectedBorder(width, BORDER_INDICATOR_DISENGAGED);
 }
 
 function topBorder(harness: ExtensionHarness, width = 12): string {
@@ -274,8 +280,8 @@ function toolCall(toolName: string): Record<string, unknown> {
   };
 }
 
-describe("edit clutch extension", () => {
-  it("registers Alt+E and decorates only the disengaged editor border", async () => {
+describe("pi clutch extension", () => {
+  it("registers Alt+E and decorates settled disengagement", async () => {
     const harness = createHarness();
     await harness.start();
 
@@ -305,17 +311,18 @@ describe("edit clutch extension", () => {
   });
 
   it("uses the last exact matching border sequence", () => {
+    const indicator = BORDER_INDICATOR_DISENGAGED;
     assert.equal(
-      decorateBorder("─── ↑ 2 more ────────"),
-      `─── ↑ 2 more ──${BORDER_INDICATOR}`,
+      decorateBorder("─── ↑ 2 more ────────", indicator),
+      `─── ↑ 2 more ─${indicator}`,
     );
     assert.equal(
-      decorateBorder("──────── label ──────── end ─────"),
-      `──────── label ──${BORDER_INDICATOR} end ─────`,
+      decorateBorder("──────── label ──────── end ─────", indicator),
+      `──────── label ─${indicator} end ─────`,
       "an insufficient trailing run must not hide an earlier usable run",
     );
     assert.equal(
-      decorateBorder("─── ↑ 2 more ─────"),
+      decorateBorder("─── ↑ 2 more ─────", indicator),
       "─── ↑ 2 more ─────",
       "the scroll indicator must remain untouched when no run fits",
     );
@@ -324,20 +331,19 @@ describe("edit clutch extension", () => {
   it("matches only the requested border styling", () => {
     const magenta = (text: string) => `\x1b[35m${text}\x1b[39m`;
     const cyan = (text: string) => `\x1b[36m${text}\x1b[39m`;
-    const line = magenta("─").repeat(8);
-    const decorated = decorateBorder(line, magenta);
 
-    assert.equal(
-      stripVTControlCharacters(decorated),
-      `──${BORDER_INDICATOR}`,
-    );
-    assert.equal(
-      decorated,
-      magenta("─").repeat(2) + magenta(BORDER_INDICATOR),
-    );
+    const indicator = BORDER_INDICATOR_DISENGAGED;
+    const line = magenta("─").repeat(indicator.length + 2);
+    const decorated = decorateBorder(line, indicator, magenta);
 
-    const differentlyStyled = cyan("─").repeat(8);
-    assert.equal(decorateBorder(differentlyStyled, magenta), differentlyStyled);
+    assert.equal(stripVTControlCharacters(decorated), `──${indicator}`);
+    assert.equal(decorated, magenta("─").repeat(2) + magenta(indicator));
+
+    const differentlyStyled = cyan("─").repeat(indicator.length + 2);
+    assert.equal(
+      decorateBorder(differentlyStyled, indicator, magenta),
+      differentlyStyled,
+    );
   });
 
   it("preserves editor identity, behavior, and non-border rows", async () => {
@@ -485,12 +491,14 @@ describe("edit clutch extension", () => {
     );
     assert.equal(harness.appendedStates.length, 0);
     assert.deepEqual(harness.persistenceOrder, []);
-    assert.equal(topBorder(harness), "─".repeat(12));
     assert.equal(
-      harness.notifications.length,
-      0,
-      "notification waits for the state change",
+      topBorder(harness),
+      expectedBorder(12, BORDER_INDICATOR_PENDING_DISENGAGE),
     );
+    assert.deepEqual(harness.notifications.at(-1), {
+      message: "Clutch disengagement pending",
+      type: "info",
+    });
     assert.equal(
       await harness.emit("context", {
         type: "context",
@@ -524,13 +532,61 @@ describe("edit clutch extension", () => {
     );
   });
 
+  it("renders pending engagement while protection remains disengaged", async () => {
+    const harness = createHarness([definitionEntry(), stateEntry(false)]);
+    await harness.start("reload");
+    harness.idle = false;
+
+    await harness.toggle();
+    assert.equal(
+      topBorder(harness),
+      expectedBorder(12, BORDER_INDICATOR_PENDING_ENGAGE),
+    );
+    assert.deepEqual(harness.notifications.at(-1), {
+      message: "Clutch engagement pending",
+      type: "info",
+    });
+    assert.equal(harness.appendedStates.length, 0);
+
+    const blocked = (await harness.emit("tool_call", toolCall("edit"))) as {
+      block: boolean;
+    };
+    assert.equal(
+      blocked.block,
+      true,
+      "protection remains active until settlement",
+    );
+
+    harness.idle = true;
+    await harness.emit("agent_settled", { type: "agent_settled" });
+    assert.equal(topBorder(harness), "─".repeat(12));
+    assert.deepEqual(harness.appendedStates.at(-1), {
+      version: 1,
+      engaged: true,
+    });
+    assert.deepEqual(harness.notifications.at(-1), {
+      message: "Clutch engaged",
+      type: "info",
+    });
+  });
+
   it("cancels queued toggles in pairs", async () => {
     const harness = createHarness();
     await harness.start();
     harness.idle = false;
 
     await harness.toggle();
+    assert.equal(
+      topBorder(harness),
+      expectedBorder(12, BORDER_INDICATOR_PENDING_DISENGAGE),
+    );
+
     await harness.toggle();
+    assert.equal(topBorder(harness), "─".repeat(12));
+    assert.deepEqual(harness.notifications, [
+      { message: "Clutch disengagement pending", type: "info" },
+      { message: "Clutch transition cancelled", type: "info" },
+    ]);
 
     harness.idle = true;
     await harness.emit("agent_settled", { type: "agent_settled" });
@@ -538,7 +594,6 @@ describe("edit clutch extension", () => {
     assert.equal(harness.appendedStates.length, 0);
     assert.deepEqual(harness.persistenceOrder, []);
     assert.equal(topBorder(harness), "─".repeat(12));
-    assert.equal(harness.notifications.length, 0);
   });
 
   it("blocks edit and write only while disengaged", async () => {

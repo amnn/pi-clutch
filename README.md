@@ -5,16 +5,21 @@ clutch to have Pi explore the codebase, ask questions, compare approaches, and
 produce a plan without using `edit` or `write`; engage it to return to normal,
 edit-enabled operation.
 
-The clutch starts **engaged**. Press **M-e** to toggle it. The editor's top
-border is unchanged while engaged and separates while disengaged:
+The clutch starts **engaged**. Press **M-e** to toggle it. A fixed seven-cell
+excerpt near the right edge of the editor's top border shows settled and
+pending states:
 
 ```text
-Engaged       ────────────
-Disengaged    ───────┤  ├─
+Engaged                 ───────
+Disengagement pending   ──┤⣿├──
+Disengaged              ─┤   ├─
+Engagement pending      ─┤⣿⣿⣿├─
 ```
 
-The indicator inherits the existing border styling and does not add a footer
-row. Each toggle also shows a transient notification naming the new state.
+The indicator inherits the existing border styling, keeps the rendered line at
+its original width, and does not add a footer row. Toggling while Pi is active
+shows a transient pending notification; settlement names the new state, and a
+second press before settlement reports that the transition was cancelled.
 
 ## Behavior
 
@@ -22,6 +27,13 @@ row. Each toggle also shows a transient notification naming the new state.
 
 Pi behaves normally. The model may use `edit` and `write` when appropriate to
 the request.
+
+### Pending transitions
+
+Pressing M-e during an active response changes only the pending indicator and
+notification. The settled clutch behavior remains in force until the agent
+settles: pending disengagement remains edit-enabled, while pending engagement
+continues to inject the reminder and block `edit` and `write`.
 
 ### Disengaged (Plan mode)
 
@@ -33,18 +45,21 @@ The extension:
 - blocks `edit` and `write` calls before execution; and
 - renders separated plates near the right edge of the editor's top border.
 
-The renderer replaces the last exact sequence of six cells using the editor's
-current horizontal-border style with `─┤  ├─`. Differently styled sections,
-scroll labels, and other border content remain untouched. If there is no exact
-match, it leaves the border unchanged.
+The renderer replaces the last exact sequence of seven cells using the editor's
+current horizontal-border style. It uses `──┤⣿├──` for pending disengagement,
+`─┤   ├─` when disengaged, and `─┤⣿⣿⣿├─` for pending engagement; a settled
+engaged clutch leaves the border unchanged. Differently styled sections, scroll
+labels, and other border content remain untouched. If there is no exact match,
+the border is unchanged.
 
 ## Context protocol
 
 The first time the clutch is disengaged, the extension stores one hidden,
 state-neutral definition of the protocol in the session. It does so immediately
-when Pi is idle. If a response is in progress, the entire toggle waits until the
-agent has fully settled, so neither the definition nor a state change can steer
-the active run. The definition explains that:
+when Pi is idle. If a response is in progress, the settled transition waits
+until the agent has fully settled, so neither the definition nor a state change
+can steer the active run. Only the pending UI changes immediately. The
+definition explains that:
 
 - a trailing hidden message wrapped in `<clutch disengaged>...</clutch>` means
   the clutch is disengaged for that model request;
@@ -65,10 +80,12 @@ JSONL, so it will be restored on reload or resume.
 
 Clutch state is stored in branch-local custom session entries that are not sent
 to the model. It survives reloads, resumes, forks, and session-tree navigation.
-Pressing M-e during an active response queues the whole toggle: state, border,
-context behavior, persistence, and notification all change together when the
-agent settles. Additional presses before settlement cancel in pairs. A session
-with no saved state starts engaged.
+Pressing M-e during an active response queues the settled toggle. The border
+immediately renders the pending state and a notification names it, while state,
+context behavior, and persistence change together only when the agent settles.
+Additional presses before settlement cancel in pairs, restore the settled
+indicator, and show a cancellation notification. A session with no saved state
+starts engaged.
 
 ## Installation
 
@@ -114,6 +131,7 @@ npm run typecheck
 npm run check
 ```
 
-The tests cover shortcut registration, fixed-width exact-style border
-rendering, editor delegation, state persistence, hidden context injection,
-reload restoration, and `edit`/`write` blocking.
+The tests cover shortcut registration, fixed-width settled and pending border
+rendering, transition notifications and cancellation, editor delegation, state
+persistence, hidden context injection, reload restoration, and `edit`/`write`
+blocking.

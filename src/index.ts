@@ -22,7 +22,10 @@ Required behavior while disengaged:
 While engaged, operate normally and make changes when appropriate to the user's request.`;
 
 export const DISENGAGED_REMINDER = `<clutch disengaged>Do not modify project files. Explore, read, search, and analyze.</clutch>`;
-export const BORDER_INDICATOR = "─┤  ├─";
+
+export const BORDER_INDICATOR_PENDING_DISENGAGE = /**/ "──┤⣿├──";
+export const BORDER_INDICATOR_PENDING_ENGAGE = /*   */ "─┤⣿⣿⣿├─";
+export const BORDER_INDICATOR_DISENGAGED = /*       */ "─┤   ├─";
 
 const HORIZONTAL_BORDER = "─";
 
@@ -56,6 +59,7 @@ interface PersistedState {
  * Stamps the clutch into the last matching stretch of horizontal border.
  *
  * @param line Rendered editor-border line.
+ * @param indicator Fixed-width clutch indicator to stamp into the border.
  * @param borderColor Optional colorizer used by the editor to render its border.
  * @returns The decorated line, or the original line when no exact border
  * sequence is long enough.
@@ -66,15 +70,16 @@ interface PersistedState {
  */
 export function decorateBorder(
   line: string,
+  indicator: string,
   borderColor?: (text: string) => string,
 ): string {
   const horizontal = borderColor?.(HORIZONTAL_BORDER) ?? HORIZONTAL_BORDER;
-  const target = horizontal.repeat(BORDER_INDICATOR.length);
+  const target = horizontal.repeat(indicator.length);
   const index = line.lastIndexOf(target);
   if (index === -1) return line;
 
-  const indicator = borderColor?.(BORDER_INDICATOR) ?? BORDER_INDICATOR;
-  return line.slice(0, index) + indicator + line.slice(index + target.length);
+  const decorated = borderColor?.(indicator) ?? indicator;
+  return line.slice(0, index) + decorated + line.slice(index + target.length);
 }
 
 /**
@@ -119,6 +124,25 @@ function hasDefinitionOnBranch(ctx: ExtensionContext): boolean {
   }
 
   return false;
+}
+
+/**
+ * The border indicator to render for the current clutch and pending states.
+ *
+ * @param engaged - Whether the clutch is currently engaged.
+ * @param pending - Whether a clutch transition is currently pending.
+ *
+ * @returns The indicator to render, or `undefined` when the clutch is engaged
+ * (not pending).
+ */
+function indicator(engaged: boolean, pending: boolean): string | undefined {
+  if (pending) {
+    return engaged
+      ? BORDER_INDICATOR_PENDING_DISENGAGE
+      : BORDER_INDICATOR_PENDING_ENGAGE;
+  } else {
+    return engaged ? undefined : BORDER_INDICATOR_DISENGAGED;
+  }
 }
 
 /**
@@ -185,7 +209,7 @@ export default function (pi: ExtensionAPI): void {
    * - Non-TUI contexts are left untouched.
    * - A previously installed editor factory remains responsible for editor
    * behavior; otherwise a standard `CustomEditor` is used.
-   * - The factory observes the live clutch state on every render.
+   * - The factory observes the live settled and pending states on every render.
    * - Decorated render results are copied so an inner editor's cached lines are
    * never mutated.
    */
@@ -203,12 +227,13 @@ export default function (pi: ExtensionAPI): void {
 
       inner.render = (width: number): string[] => {
         const lines = render(width);
-        if (engaged) return lines;
+        const decor = indicator(engaged, pending);
+        if (decor === undefined) return lines;
 
         const top = lines[0];
         if (top === undefined) return lines;
 
-        const decorated = decorateBorder(top, inner.borderColor);
+        const decorated = decorateBorder(top, decor, inner.borderColor);
         if (decorated === top) return lines;
 
         const copy = lines.slice();
@@ -258,7 +283,8 @@ export default function (pi: ExtensionAPI): void {
    * @param ctx Extension context used to inspect idleness and update the UI.
    *
    * @remarks Invariants:
-   * - While streaming, this only flips `pending`; state and UI do not change.
+   * - While streaming, this flips `pending`, redraws its indicator, and notifies
+   *   the user; settled state, context behavior, and persistence do not change.
    * - While idle, definition, state, border, and notification update together.
    * - Disengagement persists the definition before the state entry.
    */
@@ -266,6 +292,13 @@ export default function (pi: ExtensionAPI): void {
     if (!ctx.isIdle()) {
       // Multiple shortcut presses before settlement cancel in pairs.
       pending = !pending;
+      refreshEditor?.();
+
+      const message = pending
+        ? `Clutch ${engaged ? "disengagement" : "engagement"} pending`
+        : "Clutch transition cancelled";
+
+      ctx.ui.notify(message, "info");
       return;
     }
 
