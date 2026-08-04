@@ -122,13 +122,15 @@ Clutch loads will replace the decoration too.
 
 ## Development
 
-Requires Node.js 20 or newer.
+The package supports Node.js 20 or newer. Development requires Node.js 22.19
+or newer and pnpm. The repository's `devEngines` configuration pins the pnpm
+version and lets pnpm download it when necessary.
 
 ```sh
-npm install
-npm test
-npm run typecheck
-npm run check
+pnpm install
+pnpm test
+pnpm typecheck
+pnpm check
 ```
 
 The tests cover shortcut registration, fixed-width settled and pending border
