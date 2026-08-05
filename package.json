@@ -24,7 +24,9 @@
   "scripts": {
     "test": "tsx --test test/**/*.test.ts",
     "typecheck": "tsc --noEmit",
-    "check": "pnpm run typecheck && pnpm test"
+    "format": "prettier --write . --ignore-unknown",
+    "format:check": "prettier --check . --ignore-unknown",
+    "check": "pnpm run format:check && pnpm run typecheck && pnpm test"
   },
   "pi": {
     "extensions": [
@@ -39,6 +41,7 @@
     "@earendil-works/pi-agent-core": "0.83.0",
     "@earendil-works/pi-coding-agent": "0.83.0",
     "@types/node": "^24.0.0",
+    "prettier": "3.3.3",
     "tsx": "^4.20.0",
     "typescript": "^5.9.0"
   },

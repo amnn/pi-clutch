@@ -130,7 +130,14 @@ version and lets pnpm download it when necessary.
 pnpm install
 pnpm test
 pnpm typecheck
+pnpm format:check
 pnpm check
+```
+
+To apply formatting:
+
+```sh
+pnpm format
 ```
 
 The tests cover shortcut registration, fixed-width settled and pending border
