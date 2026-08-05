@@ -128,11 +128,11 @@ version and lets pnpm download it when necessary.
 
 ```sh
 pnpm install
-pnpm test
-pnpm typecheck
-pnpm format:check
 pnpm check
 ```
+
+The full check verifies formatting, type-checks the package, runs the tests,
+smoke-tests extension loading without a model request, and audits dependencies.
 
 To apply formatting:
 
