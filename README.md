@@ -144,3 +144,7 @@ The tests cover shortcut registration, fixed-width settled and pending border
 rendering, transition notifications and cancellation, editor delegation, state
 persistence, hidden context injection, reload restoration, and `edit`/`write`
 blocking.
+
+## License
+
+Apache License 2.0. See [LICENSE](LICENSE).
