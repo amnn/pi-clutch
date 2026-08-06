@@ -89,16 +89,22 @@ starts engaged.
 
 ## Installation
 
-Install from this repo:
+Install the published package from npm:
+
+```sh
+pi install npm:pi-clutch
+```
+
+Install the latest source directly from GitHub:
 
 ```sh
 pi install git:github.com/amnn/pi-clutch
 ```
 
-Or try the extension directly without installing it:
+Or try a local checkout without installing it:
 
 ```sh
-pi -e ./index.ts
+pi -e .
 ```
 
 After changing an installed extension, run `/reload` in Pi.
@@ -122,8 +128,8 @@ Clutch loads will replace the decoration too.
 
 ## Development
 
-The package supports Node.js 20 or newer. Development requires Node.js 22.19
-or newer and pnpm. The repository's `devEngines` configuration pins the pnpm
+The package and its development environment require Node.js 22.19 or newer and
+pnpm. The repository's `devEngines` configuration pins the pnpm
 version and lets pnpm download it when necessary.
 
 ```sh
