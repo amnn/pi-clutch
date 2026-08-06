@@ -23,13 +23,17 @@
     "README.md",
     "LICENSE"
   ],
+  "publishConfig": {
+    "access": "public"
+  },
   "scripts": {
     "test": "tsx --test \"test/**/*.test.ts\"",
     "typecheck": "tsc --noEmit",
     "format": "prettier --write . --ignore-unknown",
     "format:check": "prettier --check . --ignore-unknown",
     "smoke": "pi --offline --no-extensions -e . --list-models __pi_package_smoke__",
-    "check": "pnpm run format:check && pnpm run typecheck && pnpm test && pnpm run smoke && pnpm audit"
+    "check": "pnpm run format:check && pnpm run typecheck && pnpm test && pnpm run smoke && pnpm audit",
+    "prepublishOnly": "pnpm check"
   },
   "pi": {
     "extensions": [
@@ -49,7 +53,7 @@
     "typescript": "^5.9.0"
   },
   "engines": {
-    "node": ">=20"
+    "node": ">=22.19.0"
   },
   "devEngines": {
     "packageManager": {
