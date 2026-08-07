@@ -21,6 +21,38 @@ its original width, and does not add a footer row. Toggling while Pi is active
 shows a transient pending notification; settlement names the new state, and a
 second press before settlement reports that the transition was cancelled.
 
+## Installation
+
+Install the published package from npm (recommended):
+
+```bash
+pi install npm:pi-clutch
+```
+
+Alternatively, install the latest source directly from GitHub:
+
+```bash
+pi install git:github.com/amnn/pi-clutch
+```
+
+To install from a local checkout:
+
+```bash
+git clone https://github.com/amnn/pi-clutch.git
+cd pi-clutch
+pnpm install
+pi install .
+```
+
+Confirm the installation with `pi list`. After installing an update or changing
+a local checkout, run `/reload` in Pi or restart it.
+
+### macOS terminals
+
+`M-e` is usually **Opt+E** on macOS. Configure the terminal's Option key to
+send Alt/Meta (often described as “Esc+”) rather than using Opt+E as the
+acute-accent dead key.
+
 ## Behavior
 
 ### Engaged (normal mode)
@@ -87,34 +119,6 @@ Additional presses before settlement cancel in pairs, restore the settled
 indicator, and show a cancellation notification. A session with no saved state
 starts engaged.
 
-## Installation
-
-Install the published package from npm:
-
-```sh
-pi install npm:pi-clutch
-```
-
-Install the latest source directly from GitHub:
-
-```sh
-pi install git:github.com/amnn/pi-clutch
-```
-
-Or try a local checkout without installing it:
-
-```sh
-pi -e .
-```
-
-After changing an installed extension, run `/reload` in Pi.
-
-### macOS terminals
-
-`M-e` is usually **Opt+E** on macOS. Configure the terminal's Option key to
-send Alt/Meta (often described as “Esc+”) rather than using Opt+E as the
-acute-accent dead key.
-
 ## Scope and limitations
 
 This is not a sandbox, it provides behavioural guidelines, and a block for
@@ -129,8 +133,8 @@ Clutch loads will replace the decoration too.
 ## Development
 
 The package and its development environment require Node.js 22.19 or newer and
-pnpm. The repository's `devEngines` configuration pins the pnpm
-version and lets pnpm download it when necessary.
+pnpm. The repository's `packageManager` field pins the pnpm version and lets
+pnpm download it when necessary.
 
 ```sh
 pnpm install
