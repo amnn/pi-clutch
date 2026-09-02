@@ -1,9 +1,14 @@
-# Pi Clutch: Plan mode for Pi
+# Pi Clutch: Lightweight plan mode for the Pi coding agent
 
-A **Plan mode for [Pi](https://github.com/earendil-works/pi)**. Disengage the
-clutch to have Pi explore the codebase, ask questions, compare approaches, and
-produce a plan without using `edit` or `write`; engage it to return to normal,
-edit-enabled operation.
+**A deliberately minimal plan mode for the
+[Pi coding agent](https://github.com/earendil-works/pi).** No plan files,
+approval workflow, or execution state machine: disengage the clutch when you
+want Pi to explore and plan without using `edit` or `write`; engage it to return
+to normal, edit-enabled operation.
+
+If you're looking for a Claude Code/Codex-style read-only plan mode for Pi but
+want something lightweight, Clutch provides the core workflow (explore and
+discuss without editing) without introducing a separate planning system.
 
 The clutch starts **engaged**. Press **M-e** to toggle it. A fixed seven-cell
 excerpt near the right edge of the editor's top border shows settled and
