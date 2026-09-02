@@ -1,7 +1,7 @@
 {
   "name": "pi-clutch",
   "version": "0.1.2",
-  "description": "A Pi extension that toggles between exploratory and edit-enabled modes.",
+  "description": "Lightweight plan mode for the Pi coding agent — toggle between read-only exploration and edit-enabled operation.",
   "repository": {
     "type": "git",
     "url": "git+https://github.com/amnn/pi-clutch.git"
@@ -13,8 +13,19 @@
   "type": "module",
   "keywords": [
     "pi-package",
+    "pi package",
     "pi-extension",
-    "coding-agent"
+    "pi extension",
+    "pi",
+    "pi-coding-agent",
+    "pi coding agent",
+    "plan-mode",
+    "plan mode",
+    "planning mode",
+    "read-only",
+    "coding-agent",
+    "coding agent",
+    "ai coding agent"
   ],
   "license": "Apache-2.0",
   "files": [
