@@ -1,6 +1,7 @@
 // Copyright (c) Ashok Menon
 // SPDX-License-Identifier: Apache-2.0
 
+import { stripVTControlCharacters } from "node:util";
 import {
   CustomEditor,
   type ExtensionAPI,
@@ -68,7 +69,9 @@ interface PersistedState {
  * sequence is long enough.
  *
  * @remarks Invariants:
- * - Only an exact sequence using the editor's current border style is replaced.
+ * - Adjacent spans using the editor's current border style form one candidate,
+ *   whether the colorizer was applied per cell or to the complete span.
+ * - Differently styled and unstyled sections remain byte-for-byte unchanged.
  * - The replacement has the same visible width as the matched sequence.
  */
 export function decorateBorder(
@@ -76,13 +79,56 @@ export function decorateBorder(
   indicator: string,
   borderColor?: (text: string) => string,
 ): string {
-  const horizontal = borderColor?.(HORIZONTAL_BORDER) ?? HORIZONTAL_BORDER;
-  const target = horizontal.repeat(indicator.length);
-  const index = line.lastIndexOf(target);
-  if (index === -1) return line;
+  const color = borderColor ?? ((t) => t);
+  const styled = color(HORIZONTAL_BORDER);
+  const target = HORIZONTAL_BORDER.repeat(indicator.length);
 
-  const decorated = borderColor?.(indicator) ?? indicator;
-  return line.slice(0, index) + decorated + line.slice(index + target.length);
+  // Assume that `borderColor` surrounds the border with ANSI escape sequences,
+  // and infer the opening and closing sequences from that.
+  const ix = styled.indexOf(HORIZONTAL_BORDER);
+  if (ix === -1) return line;
+
+  const open = styled.slice(0, ix);
+  const close = styled.slice(ix + HORIZONTAL_BORDER.length);
+
+  const overwrite = (s: string, ix: number) =>
+    s.slice(0, ix) + indicator + s.slice(ix + target.length);
+
+  // Fast path for unstyled borders.
+  if (open === "" && close === "") {
+    const ix = line.lastIndexOf(target);
+    return ix === -1 ? line : overwrite(line, ix);
+  }
+
+  // Defensive measure to leave the border untouched in case opening and
+  // closing sequences are not balanced
+  if (open === "" || close === "") return line;
+
+  // Match both color("─").repeat(n) and color("─".repeat(n)), and variations
+  // in between.
+  const escape = (t: string) => t.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+  const cluster = `${escape(open)}[^\\x1b]*${escape(close)}`;
+  const clusters = new RegExp(`(?:${cluster})+`, "g");
+
+  // Find the first cluster that is big enough to hold the indicator, from back
+  // to front.
+  for (const match of [...line.matchAll(clusters)].reverse()) {
+    if (match.index === undefined) continue;
+
+    const content = stripVTControlCharacters(match[0]);
+    const ix = content.lastIndexOf(target);
+    if (ix === -1) continue;
+
+    // Nested overwrite: indicator into content, then colorized content into
+    // line.
+    return (
+      line.slice(0, match.index) +
+      color(overwrite(content, ix)) +
+      line.slice(match.index + match[0].length)
+    );
+  }
+
+  return line;
 }
 
 /**
