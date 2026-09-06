@@ -331,22 +331,63 @@ describe("pi clutch extension", () => {
     );
   });
 
+  it("handles per-cell, whole-span, and chunked border styling", () => {
+    const magenta = (text: string) => `\x1b[35m${text}\x1b[39m`;
+    const indicator = BORDER_INDICATOR_DISENGAGED;
+    const width = indicator.length + 2;
+    const expected = magenta(`──${indicator}`);
+
+    const borders = [
+      magenta("─").repeat(width),
+      magenta("─".repeat(width)),
+      magenta("──") + magenta("─".repeat(width - 2)),
+    ];
+
+    for (const border of borders) {
+      const decorated = decorateBorder(border, indicator, magenta);
+      assert.equal(stripVTControlCharacters(decorated), `──${indicator}`);
+      assert.equal(decorated, expected);
+    }
+
+    assert.equal(
+      decorateBorder(magenta("─── ↑ 2 more ────────"), indicator, magenta),
+      magenta(`─── ↑ 2 more ─${indicator}`),
+    );
+  });
+
+  it("works around differently styled border elements", () => {
+    const magenta = (text: string) => `\x1b[35m${text}\x1b[39m`;
+    const cyan = (text: string) => `\x1b[36m${text}\x1b[39m`;
+    const indicator = BORDER_INDICATOR_DISENGAGED;
+
+    const first = magenta("─".repeat(indicator.length + 1));
+    const label = cyan(" Working ");
+    const second = magenta("─".repeat(indicator.length + 2));
+    const suffix = cyan(" mode ");
+    const trailing = magenta("─".repeat(indicator.length - 1));
+    const line = first + label + second + suffix + trailing;
+
+    assert.equal(
+      decorateBorder(line, indicator, magenta),
+      first + label + magenta(`──${indicator}`) + suffix + trailing,
+    );
+  });
+
   it("matches only the requested border styling", () => {
     const magenta = (text: string) => `\x1b[35m${text}\x1b[39m`;
     const cyan = (text: string) => `\x1b[36m${text}\x1b[39m`;
-
     const indicator = BORDER_INDICATOR_DISENGAGED;
-    const line = magenta("─").repeat(indicator.length + 2);
-    const decorated = decorateBorder(line, indicator, magenta);
+    const width = indicator.length + 2;
 
-    assert.equal(stripVTControlCharacters(decorated), `──${indicator}`);
-    assert.equal(decorated, magenta("─").repeat(2) + magenta(indicator));
-
-    const differentlyStyled = cyan("─").repeat(indicator.length + 2);
-    assert.equal(
-      decorateBorder(differentlyStyled, indicator, magenta),
-      differentlyStyled,
-    );
+    for (const differentlyStyled of [
+      cyan("─").repeat(width),
+      cyan("─".repeat(width)),
+    ]) {
+      assert.equal(
+        decorateBorder(differentlyStyled, indicator, magenta),
+        differentlyStyled,
+      );
+    }
   });
 
   it("preserves editor identity, behavior, and non-border rows", async () => {
