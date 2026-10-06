@@ -111,7 +111,16 @@ written to session history and does not accumulate. No state message is added
 while engaged.
 
 The persistent definition is hidden from the TUI but remains in the session
-JSONL, so it will be restored on reload or resume.
+JSONL, so it will be restored on reload or resume until the next compaction.
+
+Before compaction, clutch custom messages are removed from both summary inputs
+(including split-turn prefixes). Successful compaction resets definition tracking
+without changing the clutch state; failed or cancelled compaction does not.
+While disengaged, subsequent requests include an ephemeral definition until the
+next idle disengagement persists it again. This also covers automatic continuation
+without a toggle. Reloads and tree navigation respect the same compaction boundary.
+References already embedded in ordinary conversation or previous summaries are
+not removed.
 
 ## State persistence
 

@@ -28,7 +28,7 @@ type EventHandler = (
 type Shortcut = (ctx: ExtensionContext) => void | Promise<void>;
 
 interface TestEntry {
-  type: "custom" | "custom_message";
+  type: "custom" | "custom_message" | "compaction";
   customType: string;
   id?: string;
   parentId?: string | null;
@@ -419,6 +419,89 @@ describe("pi clutch extension", () => {
     assert.notEqual(decoratedLines, originalLines);
     assert.equal(decoratedLines[0], expectedDisengagedBorder(12));
     assert.deepEqual(decoratedLines.slice(1), originalLines.slice(1));
+  });
+
+  it("filters only clutch custom messages from both compaction inputs", async () => {
+    const harness = createHarness();
+    await harness.start();
+    const definition = { ...DEFINITION, role: "custom", timestamp: 1 };
+    const reminder = { ...definition, customType: "edit-clutch-disengaged" };
+    const user = { role: "user", content: DEFINITION_CONTENT, timestamp: 2 };
+    const unrelated = { ...definition, customType: "other-extension" };
+    const original = [definition, user, reminder, unrelated];
+    const preparation = {
+      messagesToSummarize: original,
+      turnPrefixMessages: original,
+      firstKeptEntryId: "kept",
+      previousSummary: "Existing summary",
+    };
+    await harness.emit("session_before_compact", { preparation });
+    assert.deepEqual(preparation.messagesToSummarize, [user, unrelated]);
+    assert.deepEqual(preparation.turnPrefixMessages, [user, unrelated]);
+    assert.equal(original.length, 4);
+    assert.equal(preparation.firstKeptEntryId, "kept");
+    assert.equal(preparation.previousSummary, "Existing summary");
+  });
+
+  it("reintroduces instructions after compaction without changing clutch state", async () => {
+    const harness = createHarness([definitionEntry(), stateEntry(false)]);
+    await harness.start();
+    harness.idle = false;
+    await harness.emit("session_compact", {});
+    for (let request = 0; request < 2; request++) {
+      const result = (await harness.emit("context", { messages: [] })) as {
+        messages: AgentMessage[];
+      };
+      assert.deepEqual(
+        result.messages.map((m) => m.role === "custom" && m.customType),
+        ["edit-clutch-definition", "edit-clutch-disengaged"],
+      );
+    }
+    assert.equal(harness.sentMessages.length, 0);
+    assert.deepEqual(await harness.emit("tool_call", { toolName: "edit" }), {
+      block: true,
+      reason: "Clutch disengaged: edit is blocked. Press M-e to engage.",
+    });
+    harness.idle = true;
+    await harness.toggle();
+    assert.equal(await harness.emit("context", { messages: [] }), undefined);
+    await harness.toggle();
+    assert.equal(harness.sentMessages.length, 1);
+    await harness.toggle();
+    await harness.toggle();
+    assert.equal(harness.sentMessages.length, 1);
+  });
+
+  it("does not reset definition tracking for failed or cancelled compaction", async () => {
+    const harness = createHarness([definitionEntry(), stateEntry(false)]);
+    await harness.start();
+    await harness.emit("session_before_compact", {
+      preparation: { messagesToSummarize: [], turnPrefixMessages: [] },
+    });
+    await harness.emit("session_compact_failed", { aborted: true });
+    await harness.toggle();
+    await harness.toggle();
+    assert.equal(harness.sentMessages.length, 0);
+  });
+
+  it("restores definition tracking only from after the latest compaction", async () => {
+    const compacted: TestEntry[] = [
+      definitionEntry(),
+      stateEntry(false),
+      { type: "compaction", customType: "" },
+    ];
+    for (const event of ["session_start", "session_tree"]) {
+      const harness = createHarness(compacted);
+      await harness.emit(event, {});
+      await harness.toggle();
+      await harness.toggle();
+      assert.equal(harness.sentMessages.length, 1);
+    }
+    const harness = createHarness([...compacted, definitionEntry()]);
+    await harness.start("reload");
+    await harness.toggle();
+    await harness.toggle();
+    assert.equal(harness.sentMessages.length, 0);
   });
 
   it("persists state and adds the hidden protocol definition only once", async () => {
