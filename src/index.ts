@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: Apache-2.0
 
 import { stripVTControlCharacters } from "node:util";
+import type { AgentMessage } from "@earendil-works/pi-agent-core";
 import {
   CustomEditor,
   type ExtensionAPI,
@@ -53,6 +54,15 @@ export const REMINDER = {
   content: DISENGAGED_REMINDER,
   display: false,
 } as const;
+
+/** Only remove messages owned by this extension, never matching user text. */
+function isClutchMessage(message: AgentMessage): boolean {
+  return (
+    message.role === "custom" &&
+    (message.customType === MSG_DEFINITION ||
+      message.customType === MSG_DISENGAGED)
+  );
+}
 
 interface PersistedState {
   version: typeof STATE_VERSION;
@@ -163,11 +173,12 @@ function* entries(ctx: ExtensionContext) {
  * otherwise false.
  *
  * @remarks Invariant: `MSG_DEFINITION` uniquely identifies this extension's
- * protocol definition. Compaction visibility is intentionally irrelevant; this
- * check is about whether the branch has already recorded the definition.
+ * protocol definition. Each successful compaction starts a new definition
+ * lifetime, even when an older definition survives in the retained tail.
  */
 function hasDefinitionOnBranch(ctx: ExtensionContext): boolean {
   for (const entry of entries(ctx)) {
+    if (entry.type === "compaction") return false;
     if (entry.type === "custom_message" && entry.customType === MSG_DEFINITION)
       return true;
   }
@@ -235,7 +246,7 @@ export default function (pi: ExtensionAPI): void {
   let refreshEditor: (() => void) | undefined;
 
   /**
-   * Persists the state-neutral protocol definition at most once per branch.
+   * Persists the state-neutral protocol definition once per compaction lifetime.
    *
    * Takes no parameters; it closes over `pi` and `defined`.
    *
@@ -382,13 +393,37 @@ export default function (pi: ExtensionAPI): void {
     if (pending && ctx.isIdle()) toggle(ctx);
   });
 
+  pi.on("session_before_compact", ({ preparation }) => {
+    // Pi passes this preparation to its default summarizer after the hook.
+    // Filter both inputs: a cut inside a turn has a separate prefix summary.
+    preparation.messagesToSummarize = preparation.messagesToSummarize.filter(
+      (message) => !isClutchMessage(message),
+    );
+    preparation.turnPrefixMessages = preparation.turnPrefixMessages.filter(
+      (message) => !isClutchMessage(message),
+    );
+  });
+
+  pi.on("session_compact", () => {
+    defined = false;
+  });
+
   pi.on("context", (event) => {
     if (engaged) return;
 
     return {
       // Appending leaves the entire assembled conversation as an unchanged
       // prefix, maximizing provider KV-cache reuse.
-      messages: [...event.messages, { ...REMINDER, timestamp: Date.now() }],
+      messages: [
+        ...event.messages,
+        // Compaction can resume an active run without another toggle. Supply
+        // the definition ephemerally until an idle toggle persists it again.
+        // Do not mark it defined: context injections aren't stored by Pi.
+        ...(!defined
+          ? [{ ...DEFINITION, role: "custom" as const, timestamp: Date.now() }]
+          : []),
+        { ...REMINDER, timestamp: Date.now() },
+      ],
     };
   });
 
