@@ -285,7 +285,7 @@ export default function (pi: ExtensionAPI): void {
         : new CustomEditor(tui, theme, keybindings);
       const render = inner.render.bind(inner);
 
-      inner.render = (width: number): string[] => {
+      inner.render = (width: number): readonly string[] => {
         const lines = render(width);
         const decor = indicator(engaged, pending);
         if (decor === undefined) return lines;
